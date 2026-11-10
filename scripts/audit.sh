@@ -33,5 +33,13 @@ check "Конфигурация Nginx корректна" "0" "$(sudo nginx -t >
 check "Сертификат действителен не менее заданного срока" "0" "$(openssl x509 -checkend $(( ${CERT_DAYS:-30} * 24 * 3600 )) -noout -in "$TLS_CERTIFICATE" >/dev/null; echo $?)"
 check "В каталоге сайта нет файлов, доступных всем для записи" "0" "$(find "$SITE_ROOT" -perm -o+w | wc -l)"
 check "Права закрытого ключа равны 600" "600" "$(sudo stat -c '%a' "$TLS_KEY")"
+echo "[5] Контейнеризация"
+: "${APP_DIRECTORY:?Укажите каталог проекта Compose в APP_DIRECTORY}"
+APP_ENV_FILE="${APP_ENV_FILE:-$APP_DIRECTORY/.env}"
+check "Служба Docker активна" "active" "$(systemctl is-active docker)"
+DB_CONTAINER="$(docker compose --project-directory "$APP_DIRECTORY" ps -q db)"
+check "Контейнер СУБД находится в состоянии healthy" "healthy" "$(docker inspect -f '{{.State.Health.Status}}' "$DB_CONTAINER" 2>/dev/null)"
+check "Порты 5000 и 5432 не прослушиваются вне 127.0.0.1" "0" "$(ss -tln | awk '$4 ~ /:(5000|5432)$/ && $4 !~ /^127\\.0\\.0\\.1:/ {n++} END {print n+0}')"
+check "Права файла окружения равны 600" "600" "$(stat -c '%a' "$APP_ENV_FILE")"
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
